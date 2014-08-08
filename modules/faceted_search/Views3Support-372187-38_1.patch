@@ -1,0 +1,40 @@
+diff --git a/faceted_search_views.module b/faceted_search_views.module
+index 1244424..2d7722e 100755
+--- a/faceted_search_views.module
++++ b/faceted_search_views.module
+@@ -15,7 +15,7 @@ require_once('./'. drupal_get_path('module', 'faceted_search') .'/faceted_search
+ function faceted_search_views_faceted_search_ui_style_info() {
+   $styles = array();
+   foreach (views_get_all_views() as $view) {
+-    if ($view->base_table == 'node' && empty($view->disabled) && $view->display['default']->display_options['use_pager']) {
++    if ($view->base_table == 'node' && empty($view->disabled) && !empty($view->display['default']->display_options['pager']['type'])) {
+       $styles[$view->name] = new faceted_search_views_style($view->name);
+     }
+   }
+@@ -51,9 +51,11 @@ function faceted_search_views_views_pre_execute(&$view) {
+       // Make sure a limit is set.
+       $view->set_items_per_page(variable_get('default_nodes_main', 10));
+     }
++/* 
+     if (empty($view->pager['use_pager'])) {
+       $view->set_use_pager(TRUE);
+     }
++*/
+   }
+ }
+ 
+@@ -97,12 +99,12 @@ class faceted_search_views_style extends faceted_search_ui_style {
+     $views_args = $view->build_info['query_args'];
+     $views_replacements = module_invoke_all('views_query_substitutions', $view);
+     $views_query = str_replace(array_keys($views_replacements), $views_replacements, $views_query);
+-    if (is_array($views_args)) {
++    if (is_array($views_args) && count($views_args)) {
+       foreach ($views_args as $id => $arg) {
+         $views_args[$id] = str_replace(array_keys($views_replacements), $views_replacements, $arg);
+       }
++	  $query->add_subquery('n.nid IN ('. $views_query .')', $views_args);
+     }
+-    $query->add_subquery('n.nid IN ('. $views_query .')', $views_args);
+   }
+ 
+   /**

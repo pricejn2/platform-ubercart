@@ -1,0 +1,14 @@
+; $Id$
+name = jQuery Mobile UI
+description = Allows intgration of the jQuery Mobile framework.
+package = Mobile
+core = 6.x
+
+
+
+; Information added by drupal.org packaging script on 2011-09-12
+version = "6.x-3.0-beta1"
+core = "6.x"
+project = "jquerymobile_ui"
+datestamp = "1315853803"
+

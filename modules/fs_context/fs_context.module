@@ -1,0 +1,275 @@
+<?php
+// $Id: fs_context.module,v 1.2 2010/04/01 11:03:25 miiimooo Exp $
+/**
+* @file
+* Provide context sensitive features for faceted search results.
+* (C) 2010 Michael Moritz / miiimooo@drupal.org
+*/
+
+/*******************************************************************************
+* Hook Functions (Drupal)
+******************************************************************************/
+function fs_context_menu() {
+  $items = array();
+
+  $items['admin/settings/faceted_search/fs_context'] = array(
+    'title' => 'Taxonomy context settings',
+    'description' => 'Configuration options for faceted search context.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('fs_context_admin'),
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_LOCAL_TASK,
+   );
+
+  return $items;
+}
+function fs_context_block($op = 'list', $delta = 0, $edit = array()) {
+  if ($op == 'list') {
+    $taxonomy_numofblocks = variable_get('fs_context_taxonomy_numofblocks', 1);
+    $blocks = array();
+    foreach (faceted_search_get_env_ids() as $env_id) {
+      $env = faceted_search_env_load($env_id);
+//       dsm($env);
+      for ($i=1; $i <= $taxonomy_numofblocks; $i++) {
+        $blocks[$env_id . '_' . $i . '_taxonomy_context' ] = array(
+          'info' => t('@env - Taxonomy context view #@num', array(
+            '@env' => $env->name, '@num' => $i)),
+          'cache' => BLOCK_CACHE_PER_PAGE | BLOCK_CACHE_PER_USER,
+        );
+      }
+    }
+    return $blocks;
+  }
+  if ($op == 'view' && user_access('use faceted search')) {
+    // Determine the environment id and requested block.
+    list($env_id, $block_id, $delta) = explode('_', $delta, 3);
+
+    $env = faceted_search_env_load($env_id);
+//     if (!$env || $env->ui_state['stage'] == 'select' || ($env->ui_state['stage'] == 'facet' && $delta != 'sort')) {
+//       // We don't show blocks in this context.
+//       return;
+//     }
+
+    // Perform the search if has not been done previously. This should happen
+    // only when not on an actual search page.
+    if (!$env->ready()) {
+      $env->prepare();
+//       $env->execute();
+    }
+//     dsm($env->get_text());
+    if (!$env->get_text()) {
+      return; // No current search
+    }
+    $f = "fs_context_" . $delta . "_view";
+    if (function_exists($f)) {
+      $block['subject'] = t('@env - Taxonomy context view #@num', array('@env' => $env->name, '@num' => $block_id));
+      $block['content'] = $f($env, $block_id);
+//       dsm($output);
+      return $block;
+    }
+  }
+  if ($op == 'configure') {
+    list($env_id, $block_id, $delta) = explode('_', $delta, 3);
+    $f = "fs_context_" . $delta . "_configure";
+    if (function_exists($f)) {
+      $form = $f($env_id, $block_id);
+      return $form;
+    }
+  }
+  if ($op == 'save') {
+    list($env_id, $block_id, $delta) = explode('_', $delta, 3);
+    $f = "fs_context_" . $delta . "_save";
+    if (function_exists($f)) {
+      $f($env_id, $block_id, $edit);
+    }
+  }
+}
+/** hook for displaying Taxonomy context view **/
+function fs_context_taxonomy_context_view($search, $block_id) {
+  if (!$search->get_text()) {
+    return; // No current search
+  }
+  $text = $search->get_text();
+//   dsm($text);
+  $filters = $search->get_filters();
+  /// maybe clone?
+  foreach ($filters as $index => $filter) {
+    if ($filter->is_active()) {
+//       $content = theme('faceted_search_ui_facet_heading', $search, $search->ui_state, $filters, $index, 'current');
+//       $output .= theme('faceted_search_ui_facet_wrapper', $search, $filter, 'current', $content);
+//       dsm($filter->get_keywords($text));
+//       dsm($text);
+//       dsm($filter);
+//       dsm($filter->get_key());
+      $new = taxonomy_facets_faceted_search_collect(&$filters, "text", $search, "blah", $text);
+    }
+  }
+//   dsm($filters);
+  $skip = variable_get('fs_context_taxonomy_skip_' . $search->env_id . '_' . $block_id, true);
+  $terms = array();
+  foreach($filters as $index=>$facet) {
+    if (!$facet->is_active()) {
+      continue;
+    }
+    $filter_terms = array();
+    foreach($facet->get_active_path() as $path) { //looks wrong, is wrong
+      if ($skip && (get_class($facet) != "taxonomy_facet")) {
+        continue;
+      }
+      $filter_terms[] = $path->_tid; //looks wrong, is wrong
+    }
+    $terms = array_merge($terms, $filter_terms);
+  }
+//   dsm($terms);
+  if (count($terms) === 0) {
+    return;
+  }
+  $view_argument = variable_get('fs_context_taxonomy_view_argument_'
+    . $search->env_id . '_' . $block_id, 'last');
+  $delta = variable_get('fs_context_taxonomy_view_'
+    . $search->env_id . '_' . $block_id, 0);
+  list($view_id, $display_name) = explode(":", $delta, 2);
+//   $view = views_get_view($view_id);
+//   $view->set_display($display_name);
+  $f = "fs_context_taxonomy_argument_handler_" . $view_argument;
+  $output = (function_exists($f) ? $f($view_id, $display_name, $terms) : "");
+//   dsm($arguments);
+  return $output;
+//  $view->set_arguments($arguments); /// this is simple but could be extended!
+//   $content = $view->preview(NULL, $arguments);
+//   $result = $view->result;
+//   dsm($view->argument);
+//   $view->destroy();
+//   if (count($result) == 0) {
+//     return "";
+//   }
+//   return $content;
+}
+/** hook for configuring Taxonomy context view, return $form array **/
+function fs_context_taxonomy_context_configure($env_id, $block_id) {
+//   dsm($env_id);
+//   dsm($delta);
+  $styles = array();
+  foreach (views_get_all_views() as $view) {
+    if ($view->disabled) {
+      continue;
+    }
+    foreach($view->display as $display_name=>$display) {
+      $styles[$display->vid . ":" . $display_name] = $view->name . ": "
+        . $display->display_title;
+    }
+//     dsm($view);
+//     $styles[] = $view;
+  }
+  $form['fs_context']['help'] = array(
+    '#value' => t("<p>A taxonomy context block uses the current <em>taxonomy path</em> and passes it to a view. The taxonomy path is constructed from the current selection and its ordering in the URL. For instance, <em>taxonomy:2,3</em> is a path where <em>2</em> is the first term id and <em>3</em> is the second and last term id. The term path can be passed in various ways to a view to display an informational block sensitive to the current selection.</p>")
+  );
+  $form['fs_context']['view'] = array(
+    '#type' => 'select',
+    '#title' => t('View'),
+    '#description' => t("Select the view to use for displaying the taxonomy context. The view must accept a term id as argument and validation should allow for 1+2+3 (for OR) and 1,2,3 (for AND)."),
+    '#default_value' => variable_get('fs_context_taxonomy_view_'
+      . $env_id . '_' . $block_id, 0),
+    '#options' => $styles,
+    '#required' => TRUE,
+  );
+  $form['fs_context']['view_argument'] = array(
+    '#type' => 'select',
+    '#title' => t('Argument handling'),
+    '#description' => t("Select how the taxonomy term ids will be handled before they are being passed to the view. The order this refers to is what is in the URL after <em>taxonomy:</em>."),
+    '#default_value' => variable_get('fs_context_taxonomy_view_argument_'
+      . $env_id . '_' . $block_id, 'last'),
+    '#options' => array(
+      "last" => t("Pass only the last term id"),
+      "first" => t("Pass only the first term id"),
+      "or" => t("Combine the term ids with a logical OR (same as +)"),
+      "and" => t("Combine the term ids with a logical AND (same as ,)"),
+      "iterate" => t("Iterate through the term ids"),
+      "iterate_reverse" => t("Iterate through the term ids in reverse order"),
+    ),
+    '#required' => TRUE,
+  );
+  $form['fs_context']['skip'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Skip non-taxonomy facets'),
+    '#description' => t("Ignore facets that are not taxonomy facets when detecting the current taxonomy path."),
+    '#default_value' => variable_get('fs_context_taxonomy_skip_'
+      . $env_id . '_' . $block_id, TRUE),
+  );
+
+/*  $form['fs_context']['level_mode'] = array(
+     '#type' => 'select',
+    '#title' => t('Level mode'),
+    '#default_value' => variable_get('fs_context_taxonomy_level_mode_'
+      . $env_id . '_' . $block_id, 'always'),
+    '#description' => t("This allows you to tweak at which level the taxonomy context block gets displayed. <em>First level</em> means the block is only displayed when there is one taxonomy facet selected. Second and third level work the same way. <em>From second level</em> means the context block is only displayed if there is more than one facet selected. "),
+    '#required' => TRUE,
+    '#options' => array(
+      "always" => t("Always"),
+      "eq_1" => t("First level"),
+      "eq_2" => t("Second level"),
+      "eq_3" => t("Third level"),
+      "gt_1" => t("From second level"),
+      "gt_2" => t("From third level"),
+    ),
+
+  );
+*/
+
+
+  return $form;
+}
+/** hook for saving Taxonomy context view, return $form array **/
+function fs_context_taxonomy_context_save($env_id, $block_id, $edit) {
+  variable_set('fs_context_taxonomy_view_' . $env_id . '_' . $block_id, $edit['view']);
+  variable_set('fs_context_taxonomy_view_argument_' . $env_id . '_' . $block_id, $edit['view_argument']);
+  variable_set('fs_context_taxonomy_skip_' . $env_id . '_' . $block_id, $edit['skip']);
+//   variable_set('fs_context_taxonomy_level_mode_' . $env_id . '_' . $block_id, $edit['level_mode']);
+
+}
+/** operator hook for Taxonomy context view, return argument to view **/
+function fs_context_taxonomy_argument_handler_last($view_id, $display_name, $terms) {
+  $arguments = array_pop($terms);
+  return views_embed_view($view_id, $display_name, $arguments);
+}
+function fs_context_taxonomy_argument_handler_first($view_id, $display_name, $terms) {
+  $arguments = array_shift($terms);
+  return views_embed_view($view_id, $display_name, $arguments);
+}
+function fs_context_taxonomy_argument_handler_or($view_id, $display_name, $terms) {
+  return views_embed_view($view_id, $display_name, implode("+", $terms));
+}
+function fs_context_taxonomy_argument_handler_and($view_id, $display_name, $terms) {
+  return views_embed_view($view_id, $display_name, implode(",", $terms));
+}
+function fs_context_taxonomy_argument_handler_iterate($view_id, $display_name, $terms) {
+  $output = "";
+  foreach($terms as $term) {
+    $output .= views_embed_view($view_id, $display_name, $term);
+  }
+  return $output;
+}
+function fs_context_taxonomy_argument_handler_iterate_reverse($view_id, $display_name, $terms) {
+  $terms = array_reverse($terms);
+  $output = "";
+  foreach($terms as $term) {
+    $output .= views_embed_view($view_id, $display_name, $term);
+  }
+  return $output;
+}
+/** admin page **/
+function fs_context_admin() {
+  $form = array();
+
+  $form['fs_context_taxonomy_numofblocks'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Number of taxonomy context blocks'),
+    '#default_value' => variable_get('fs_context_taxonomy_numofblocks', 1),
+    '#size' => 2,
+    '#maxlength' => 2,
+    '#description' => t("Number of taxonomy context blocks to provide per faceted search environment."),
+    '#required' => TRUE,
+  );
+
+  return system_settings_form($form);
+}

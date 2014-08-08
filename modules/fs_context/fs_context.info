@@ -1,0 +1,18 @@
+; $Id: fs_context.info,v 1.1 2010/03/25 13:03:27 miiimooo Exp $
+name = Faceted search context
+description = Provide additional context sensitive features to faceted search results
+core = 6.x
+
+dependencies[] = faceted_search
+dependencies[] = views
+
+package = "Faceted Search"
+
+version = "6.x-0.1-dev"
+
+; Information added by drupal.org packaging script on 2010-04-01
+version = "6.x-1.1"
+core = "6.x"
+project = "fs_context"
+datestamp = "1270120209"
+
